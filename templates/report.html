@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8">
+<title>Проверка — {{ s.subject.name_short or s.subject.name_full or s.subject.inn }}</title>
+<style>
+body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:1000px;margin:2em auto;padding:0 1em;color:#1a1a1a;line-height:1.55}
+h1{margin:0 0 .2em}
+h2{margin:1.5em 0 .5em;font-size:1.15em;border-bottom:1px solid #eee;padding-bottom:.2em}
+h2 .src-link{font-size:.75em;font-weight:normal;margin-left:.6em;text-decoration:none;color:#1976d2;border-bottom:1px dotted #1976d2}
+h2 .src-link:hover{color:#0d47a1}
+h3.fed-h{font-size:1em;margin:1.2em 0 .3em;color:#333}
+.muted{color:#666}
+.score{display:inline-block;padding:.7em 1.2em;border-radius:8px;color:#fff;font-weight:bold;font-size:1.1em}
+table{border-collapse:collapse;width:100%;margin:.6em 0}
+th,td{border:1px solid #ddd;padding:.5em;text-align:left;vertical-align:top;font-size:.95em}
+th{background:#f5f5f5}
+.sev-critical{color:#c62828;font-weight:bold}
+.sev-high{color:#ef6c00;font-weight:bold}
+.sev-medium{color:#f9a825}
+.sev-low{color:#777}
+.rec{padding:.9em 1em;border-left:4px solid #1976d2;background:#e3f2fd;margin:.5em 0}
+.rec-bad{padding:.9em 1em;border-left:4px solid #c62828;background:#ffebee;margin:.5em 0}
+.missing li{color:#666}
+.notice{padding:.7em 1em;background:#fff3cd;border-left:4px solid #f9a825;margin:1em 0;font-size:.9em}
+.human-summary{padding:1.2em 1.4em;background:#f0f7ff;border-left:4px solid #1976d2;margin:1em 0;font-size:1.02em;line-height:1.7}
+.footer{margin-top:2.5em;font-size:.85em;color:#888}
+a.dl{display:inline-block;margin-right:1em;font-size:.9em}
+a.ext{color:#1976d2;text-decoration:none;margin-left:.3em;font-weight:bold}
+a.ext:hover{text-decoration:underline}
+ul.tight{margin:0;padding-left:1.2em}
+ul.tight li{margin:0}
+.quick-links{margin:.5em 0 1em;font-size:.9em}
+.quick-links a{display:inline-block;margin-right:1em;color:#1976d2;text-decoration:none;border-bottom:1px dotted #1976d2}
+.quick-links a:hover{color:#0d47a1}
+.alert-list{margin:.4em 0;padding-left:1.3em;line-height:1.6}
+.alert-list li{margin:.2em 0}
+</style></head><body>
+
+<h1>Отчёт о проверке контрагента</h1>
+<p class="muted">Дата: {{ date }} · Источник данных: Checko.ru API v2 + DataNewton · Анализ: GigaChat ·
+Тип проверки:
+{% if s.check_type == 'full' %}<b>Полная</b>
+{% elif s.check_type == 'monitoring' %}<b>Мониторинг</b>
+{% else %}<b>Экспресс</b>{% endif %}
+</p>
+<p>
+  <a class="dl" href="/report/{{ s.subject.inn }}/md">Скачать Markdown</a>
+  <a class="dl" href="/report/{{ s.subject.inn }}/json">Скачать JSON</a>
+</p>
+
+{% if llm_error %}
+<div class="notice">GigaChat недоступен: {{ llm_error }}. Отчёт без текстовой интерпретации LLM.</div>
+{% endif %}
+
+<div>
+<p><b>{{ s.subject.type }} · {{ s.subject.name_short or s.subject.name_full }}</b><br>
+ИНН: {{ s.subject.inn }}{% if s.subject.ogrn %} · ОГРН/ОГРНИП: {{ s.subject.ogrn }}{% endif %}{% if s.subject.kpp %} · КПП: {{ s.subject.kpp }}{% endif %}<br>
+Статус: {{ s.subject.status or '—' }} · Регистрация: {{ s.subject.reg_date or '—' }}{% if s.subject.egrul_date %} · Выписка {% if s.subject.type == 'ИП' %}ЕГРИП{% else %}ЕГРЮЛ{% endif %}: {{ s.subject.egrul_date }}{% endif %}<br>
+Регион: {{ s.subject.region or '—' }}<br>
+{% if s.subject.type == 'ИП' %}Населённый пункт: {% else %}Адрес: {% endif %}{{ s.subject.address or '—' }}<br>
+ОКВЭД: {{ s.subject.okved or '—' }}{% if s.subject.okved_name %} — {{ s.subject.okved_name }}{% endif %}<br>
+{% if s.subject.leader %}Руководитель: {{ s.subject.leader }}{% if s.subject.leader_position %} ({{ s.subject.leader_position }}){% endif %}<br>{% endif %}
+{% if s.subject.schr is not none %}СЧР: {{ s.subject.schr }} чел.<br>{% endif %}
+{% if s.subject.capital %}Уставный капитал: {{ "%.2f"|format(s.subject.capital) }} ₽{% endif %}
+</p>
+
+{% if s.subject.inn %}
+<div class="quick-links">
+<b>Открыть в первоисточниках:</b>
+<a href="https://egrul.nalog.ru/index.html?query={{ s.subject.inn }}" target="_blank" rel="noopener">ЕГРЮЛ/ЕГРИП</a>
+<a href="https://kad.arbitr.ru/?search={{ s.subject.inn }}" target="_blank" rel="noopener">КАД</a>
+<a href="https://fssp.gov.ru/iss/ip?is%5B0%5D={{ s.subject.inn }}" target="_blank" rel="noopener">ФССП</a>
+<a href="https://zakupki.gov.ru/epz/order/extendedsearch/results.html?searchString={{ s.subject.inn }}" target="_blank" rel="noopener">ЕИС</a>
+<a href="https://fedresurs.ru/company/{{ s.subject.inn or s.subject.ogrn }}" target="_blank" rel="noopener">Федресурс</a>
+<a href="https://pb.nalog.ru/index.html?query={{ s.subject.inn }}" target="_blank" rel="noopener">ФНС</a>
+<a href="https://proverki.gov.ru/portal/public-search?inn={{ s.subject.inn }}" target="_blank" rel="noopener">Проверки</a>
+</div>
+{% endif %}
+
+<p>
+{% if s.verdict == 'отказ' %}
+  <span class="score" style="background:#c62828">ОТКАЗ: безусловный стоп-фактор</span>
+{% elif s.verdict == 'воздержаться' %}
+  <span class="score" style="background:#ef6c00">ВОЗДЕРЖАТЬСЯ: 2+ условных стоп-фактора</span>
+{% elif s.verdict == 'с условиями' %}
+  <span class="score" style="background:#f9a825;color:#000">С УСЛОВИЯМИ: 1 условный стоп-фактор</span>
+{% elif s.verdict == 'заключать' %}
+  <span class="score" style="background:#2e7d32">ЗАКЛЮЧАТЬ: стоп-факторы не выявлены</span>
+{% else %}
+  <span class="score" style="background:#555">{{ s.verdict or 'вердикт не определён' }}</span>
+{% endif %}
+</p>
+
+{% if s.verdict_reason %}
+<p class="muted" style="margin-top:.6em">{{ s.verdict_reason }}</p>
+{% endif %}
+
+{% if s.check_type == 'monitoring' and s.monitoring_recommendation %}
+<p style="margin-top:1em;padding:.7em 1em;background:#e3f2fd;border-left:4px solid #1976d2">
+<b>Мониторинг:</b> {{ s.monitoring_recommendation }}
+{% if not s.previous_found %}<br><span class="muted">Предыдущая проверка не найдена.</span>{% endif %}
+</p>
+{% endif %}
+
+{% if llm and llm.headline %}
+<p style="font-size:1.15em;font-weight:600;margin-top:.8em;color:#222">{{ llm.headline }}</p>
+{% endif %}
+</div>
+
+{% if llm and llm.summary %}
+<h2>Кратко о контрагенте</h2>
+<p style="font-size:1.02em">{{ llm.summary }}</p>
+{% endif %}
+
+{% if s.unconditional_count > 0 %}
+<h2 style="color:#c62828">Безусловные стоп-факторы (Приложение № 4)</h2>
+<p class="muted">Наличие хотя бы одного — основание для отказа (п. 3.9.3).</p>
+<table>
+<tr><th>Стоп-фактор</th><th>Подтверждение</th><th>Источник</th></tr>
+{% for r in s.risks if r.stop_type == 'unconditional' %}
+<tr style="background:#ffebee">
+<td class="sev-critical">{{ r.title }}</td>
+<td>{{ r.evidence }}</td>
+<td class="muted">{{ r.source }}{% if r.source %}{% set u = url_for_source(r.source, s.subject) %}{% if u %} <a class="ext" href="{{ u }}" target="_blank" rel="noopener" title="Открыть в первоисточнике">↗</a>{% endif %}{% endif %}</td>
+</tr>
+{% endfor %}
+</table>
+{% endif %}
+
+{% if s.conditional_count > 0 %}
+<h2 style="color:#ef6c00">Условные стоп-факторы (Приложение № 4)</h2>
+<p class="muted">Два и более — основание для отказа; один — требует условий.</p>
+<table>
+<tr><th>Стоп-фактор</th><th>Подтверждение</th><th>Источник</th></tr>
+{% for r in s.risks if r.stop_type == 'conditional' %}
+<tr>
+<td class="sev-high">{{ r.title }}</td>
+<td>{{ r.evidence }}</td>
+<td class="muted">{{ r.source }}{% if r.source %}{% set u = url_for_source(r.source, s.subject) %}{% if u %} <a class="ext" href="{{ u }}" target="_blank" rel="noopener" title="Открыть в первоисточнике">↗</a>{% endif %}{% endif %}</td>
+</tr>
+{% endfor %}
+</table>
+{% endif %}
+
+<h2>Прочие факторы</h2>
+{% if s.risks | selectattr('stop_type', 'equalto', 'info') | list %}
+<table>
+<tr><th>Фактор</th><th>Подтверждение</th><th>Группа</th></tr>
+{% for r in s.risks if r.stop_type == 'info' %}
+<tr>
+<td class="sev-{{ r.severity }}">{{ r.title }}</td>
+<td>{{ r.evidence }}</td>
+<td>{{ r.group }}</td>
+</tr>
+{% endfor %}
+</table>
+{% else %}
+<p class="muted">Информационных факторов нет.</p>
+{% endif %}
+
+{% if s.stop_factors_comment %}
+<h2>Комментарий по стоп-факторам</h2>
+<p>{{ s.stop_factors_comment }}</p>
+{% endif %}
+
+{% if s.check_type == 'monitoring' and s.changes %}
+<h2>Изменения с прошлой проверки</h2>
+<table>
+<tr><th style="width:140px">Серьёзность</th><th>Что изменилось</th><th>Было</th><th>Стало</th></tr>
+{% for c in s.changes %}
+<tr>
+<td class="sev-{% if c.severity == 'critical' %}critical{% elif c.severity == 'warning' %}high{% else %}low{% endif %}">
+{{ 'Критично' if c.severity == 'critical' else ('Внимание' if c.severity == 'warning' else 'Инфо') }}
+</td>
+<td>{{ c.title }}</td>
+<td class="muted">{{ c.old or '—' }}</td>
+<td>{{ c.new or '—' }}</td>
+</tr>
+{% endfor %}
+</table>
+{% endif %}
+
+{% if llm and llm.financial_analysis %}
+<h2>Финансовый анализ (GigaChat)</h2>
+<p>{{ llm.financial_analysis }}</p>
+{% endif %}
+
+{% if s.finances_summary %}
+<h2>Финансовые показатели</h2>
+<table>
+<tr><th>Год</th><th>Выручка</th><th>Прибыль</th><th>Собственный капитал</th><th>Активы</th></tr>
+{% for r in s.finances_summary %}
+<tr><td>{{ r.year }}</td><td>{{ r.revenue_f }}</td><td>{{ r.profit_f }}</td><td>{{ r.equity_f }}</td><td>{{ r.assets_f }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+
+{% if s.subject.tax_regimes %}
+<h2>Налоговые режимы</h2>
+<p>{{ s.subject.tax_regimes | join(', ') }}</p>
+{% endif %}
+
+{% if s.subject.licenses %}
+<h2>Лицензии ({{ s.subject.licenses | length }} записей)</h2>
+<table>
+<tr><th>Номер</th><th>Дата</th><th>Действует до</th><th>Орган</th><th>Виды деятельности</th></tr>
+{% for lic in s.subject.licenses %}
+<tr>
+<td>{{ lic.number or '—' }}</td>
+<td>{{ lic.date or '—' }}</td>
+<td>{{ lic.valid_to or '—' }}</td>
+<td class="muted">{{ lic.authority or '—' }}</td>
+<td>
+<ul class="tight">
+{% for a in lic.activities or [] %}<li>{{ a }}</li>{% endfor %}
+</ul>
+</td>
+</tr>
+{% endfor %}
+</table>
+{% endif %}
+
+{% if s.subject.founders and (s.subject.founders.physical or s.subject.founders.russian_orgs or s.subject.founders.foreign_orgs or s.subject.founders.state) %}
+<h2>Учредители</h2>
+<table>
+<tr><th>Тип</th><th>Учредитель</th><th>Доля, %</th><th>Примечание</th></tr>
+{% for f in s.subject.founders.physical or [] %}
+<tr>
+<td>Физлицо</td><td>{{ f.name or '—' }}</td><td>{{ f.share or '—' }}</td>
+<td class="muted">{% if f.encumbered %}доля заложена{% endif %}</td>
+</tr>
+{% endfor %}
+{% for o in s.subject.founders.russian_orgs or [] %}
+<tr><td>Российская организация</td><td>{{ o.name or '—' }}</td><td>{{ o.share or '—' }}</td><td class="muted">{{ o.ogrn or '' }}</td></tr>
+{% endfor %}
+{% for o in s.subject.founders.foreign_orgs or [] %}
+<tr style="background:#fff3e0"><td>Иностранная организация</td><td>{{ o.name or '—' }}</td><td>{{ o.share or '—' }}</td><td>{{ o.country or '—' }}</td></tr>
+{% endfor %}
+{% if s.subject.founders.state %}
+<tr><td>Государство</td><td>РФ / субъект / муниципальное образование</td><td>—</td><td></td></tr>
+{% endif %}
+</table>
+{% endif %}
+
+{% if s.subject.shareholder_registrar %}
+<h2>Держатель реестра акционеров</h2>
+<p>{{ s.subject.shareholder_registrar.name or '—' }}{% if s.subject.shareholder_registrar.ogrn %} (ОГРН {{ s.subject.shareholder_registrar.ogrn }}){% endif %}</p>
+{% endif %}
+
+{% if s.subject.msme and s.subject.msme.category %}
+<h2>Реестр МСП</h2>
+<p>Категория: <b>{{ s.subject.msme.category }}</b>{% if s.subject.msme.included_date %}, включена {{ s.subject.msme.included_date }}{% endif %}.</p>
+{% endif %}
+
+{% if s.subject.branches or s.subject.representative_offices %}
+<h2>Филиалы и представительства</h2>
+{% if s.subject.branches %}
+<p><b>Филиалы ({{ s.subject.branches | length }}):</b></p>
+<ul>{% for b in s.subject.branches %}<li>{{ b.name or '—' }} — {{ b.address or '—' }}</li>{% endfor %}</ul>
+{% endif %}
+{% if s.subject.representative_offices %}
+<p><b>Представительства ({{ s.subject.representative_offices | length }}):</b></p>
+<ul>{% for r in s.subject.representative_offices %}<li>{{ r.name or '—' }} — {{ r.address or '—' }}</li>{% endfor %}</ul>
+{% endif %}
+{% endif %}
+
+{% if s.subject.trademarks %}
+<h2>Товарные знаки</h2>
+<p>Зарегистрировано: {{ s.subject.trademarks | length }}</p>
+<ul>
+{% for t in s.subject.trademarks[:10] %}
+<li>№ {{ t.id or '—' }}, зарегистрирован {{ t.date or '—' }}{% if t.valid_to %}, действует до {{ t.valid_to }}{% endif %}</li>
+{% endfor %}
+</ul>
+{% endif %}
+
+{% if s.subject.predecessors %}
+<h2>Правопредшественники</h2>
+<ul>
+{% for p in s.subject.predecessors %}
+<li>{{ p.name or '—' }} (ОГРН {{ p.ogrn or '—' }})</li>
+{% endfor %}
+</ul>
+{% endif %}
+
+{% if s.subject.successors %}
+<h2>Правопреемники</h2>
+<ul>
+{% for p in s.subject.successors %}
+<li>{{ p.name or '—' }} (ОГРН {{ p.ogrn or '—' }})</li>
+{% endfor %}
+</ul>
+{% endif %}
+
+{% if s.subject.contacts and (s.subject.contacts.phones or s.subject.contacts.emails or s.subject.contacts.website) %}
+<h2>Контакты</h2>
+<p>
+{% if s.subject.contacts.phones %}Телефоны: {{ s.subject.contacts.phones | join(', ') }}<br>{% endif %}
+{% if s.subject.contacts.emails %}Email: {{ s.subject.contacts.emails | join(', ') }}<br>{% endif %}
+{% if s.subject.contacts.website %}Сайт: {{ s.subject.contacts.website }}{% endif %}
+</p>
+{% endif %}
+
+{% if s.contracts_summary %}
+<h2>Государственные контракты (44-ФЗ, 223-ФЗ)
+{% if s.subject.inn %}<a class="src-link" href="https://zakupki.gov.ru/epz/contract/search/results.html?searchString={{ s.subject.inn }}" target="_blank" rel="noopener">ЕИС ↗</a>{% endif %}
+</h2>
+{% if s.contracts_summary.total_count > 0 %}
+<p>Всего по данным ЕИС: <b>{{ s.contracts_summary.total_count }}</b> контрактов.
+{% if s.contracts_summary.loaded_count < s.contracts_summary.total_count %}
+В выборке загружено {{ s.contracts_summary.loaded_count }} на сумму
+<b>{{ "%.2f"|format(s.contracts_summary.loaded_sum) }} ₽</b>.
+<span class="muted">Сумма по всем {{ s.contracts_summary.total_count }} контрактам не рассчитана — лимит Checko API.</span>
+{% else %}
+На сумму <b>{{ "%.2f"|format(s.contracts_summary.loaded_sum) }} ₽</b>.
+{% endif %}
+</p>
+<table>
+<tr><th>Правовой режим</th><th>Роль</th><th>Всего контрактов</th><th>В выборке</th><th>Сумма выборки</th></tr>
+{% for key, info in s.contracts_summary.by_law.items() %}
+<tr>
+<td>{{ key.split('-')[0] }}-ФЗ</td>
+<td>{{ 'Заказчик' if key.endswith('customer') else ('Поставщик' if key.endswith('supplier') else 'Заказчик/Поставщик') }}</td>
+<td>{{ info.declared_count }}</td>
+<td>{{ info.count }}</td>
+<td>{{ "%.2f"|format(info.sum) }} ₽</td>
+</tr>
+{% endfor %}
+</table>
+{% else %}
+<p class="muted">Контрактов по 44-ФЗ и 223-ФЗ не найдено.</p>
+{% endif %}
+{% endif %}
+
+{% if s.plaintiff_summary and s.plaintiff_summary.declared_count > 0 %}
+<h2>Иски в роли истца (за последние 3 года)
+{% if s.subject.inn %}<a class="src-link" href="https://kad.arbitr.ru/?search={{ s.subject.inn }}" target="_blank" rel="noopener">КАД ↗</a>{% endif %}
+</h2>
+<p>
+Всего дел в роли истца за 3 года: <b>{{ s.plaintiff_summary.declared_count }}</b>.
+{% if s.plaintiff_summary.sum_is_partial %}
+В выборке загружено {{ s.plaintiff_summary.count }}
+на сумму <b>{{ "%.2f"|format(s.plaintiff_summary.sum) }} ₽</b>.
+<span class="muted">Сумма по всем {{ s.plaintiff_summary.declared_count }} делам не рассчитана — лимит Checko API.</span>
+{% else %}
+На сумму <b>{{ "%.2f"|format(s.plaintiff_summary.sum) }} ₽</b>.
+{% endif %}
+</p>
+{% endif %}
+
+{% if s.related_summary %}
+<h2>Связанные юридические лица</h2>
+<p>Проверено: <b>{{ s.related_summary.checked }}</b>.
+Проблемных: <b>{{ s.related_summary.problems | length }}</b>.
+<span class="muted">Проверяются первые 10 связанных ОГРН из ответа Checko по руководителю и учредителям.</span></p>
+{% if s.related_summary.problems %}
+<table>
+<tr><th>ОГРН</th><th>Наименование</th><th>Проблема</th><th></th></tr>
+{% for p in s.related_summary.problems %}
+<tr style="background:#fff3e0">
+<td>{{ p.ogrn }}</td><td>{{ p.name }}</td><td>{{ p.reason }}</td>
+<td><a class="ext" href="https://egrul.nalog.ru/index.html?query={{ p.ogrn }}" target="_blank" rel="noopener" title="Открыть в ЕГРЮЛ">↗</a></td>
+</tr>
+{% endfor %}
+</table>
+{% else %}
+<p class="muted">Проблемных связанных юрлиц не выявлено.</p>
+{% endif %}
+{% endif %}
+
+{% if s.fssp %}
+<h2>Исполнительные производства ФССП
+{% if s.subject.inn %}<a class="src-link" href="https://fssp.gov.ru/iss/ip?is%5B0%5D={{ s.subject.inn }}" target="_blank" rel="noopener">ФССП ↗</a>{% endif %}
+</h2>
+<p>
+Всего по данным ФССП: <b>{{ s.fssp.total }}</b>{% if s.fssp.is_partial %} (загружено {{ s.fssp.loaded_count }} из {{ s.fssp.total }}){% endif %}.
+Открытых: <b>{{ s.fssp.open_count }}</b>{% if s.fssp.open_sum %} на сумму <b>{{ "%.2f"|format(s.fssp.open_sum) }} ₽</b>{% endif %}.
+Завершённых: <b>{{ s.fssp.closed_count }}</b>{% if s.fssp.closed_initial_sum %} на общую сумму <b>{{ "%.2f"|format(s.fssp.closed_initial_sum) }} ₽</b>{% endif %}.
+{% if s.fssp.unknown_count %}<br>Не распознано категорий: {{ s.fssp.unknown_count }}.{% endif %}
+</p>
+{% if s.fssp.by_category %}
+<table>
+<tr><th>Категория</th><th>Открытых</th><th>Закрытых</th><th>Сумма закрытых</th></tr>
+{% for cat, info in s.fssp.by_category.items() %}
+{% if info.open or info.closed %}
+<tr>
+<td>
+{% if cat == 'salary' %}Заработная плата
+{% elif cat == 'tax' %}Налоги и взносы
+{% elif cat == 'utility' %}Коммунальные платежи (газ, тепло, ЖКХ)
+{% elif cat == 'credit' %}Кредитные платежи
+{% elif cat == 'arrest' %}Арест имущества
+{% elif cat == 'search' %}Розыск имущества
+{% elif cat == 'exec_fee' %}Исполнительский сбор
+{% elif cat == 'fees' %}Госпошлина и судебные издержки
+{% elif cat == 'fine' %}Штрафы (ГИБДД, АП)
+{% elif cat == 'bankruptcy' %}Банкротство
+{% elif cat == 'generic' %}Имущественное взыскание
+{% elif cat == 'non_property' %}Неимущественное взыскание
+{% else %}Прочее ({{ cat }}){% endif %}
+</td>
+<td>{{ info.open }}</td>
+<td>{{ info.closed }}</td>
+<td>{{ "%.2f"|format(info.closed_sum or 0) }} ₽</td>
+</tr>
+{% endif %}
+{% endfor %}
+</table>
+{% endif %}
+{% endif %}
+
+{% if s.fedresurs and s.fedresurs.total > 0 %}
+<h2>Федресурс (ЕФРСФДЮЛ)
+{% if s.subject.inn or s.subject.ogrn %}<a class="src-link" href="https://fedresurs.ru/company/{{ s.subject.inn or s.subject.ogrn }}" target="_blank" rel="noopener">Федресурс ↗</a>{% endif %}
+</h2>
+<p>Всего сообщений с участием компании: <b>{{ s.fedresurs.total }}</b>{% if s.fedresurs.loaded < s.fedresurs.total %} (загружено {{ s.fedresurs.loaded }}){% endif %}.</p>
+
+{% if s.fedresurs.bankruptcy_intents %}
+<h3 class="fed-h" style="color:#ef6c00">Намерения обратиться с заявлением о банкротстве</h3>
+<ul class="alert-list">
+{% for b in s.fedresurs.bankruptcy_intents %}
+<li>{{ b.date or '—' }} — {{ b.title }}{% if b.url %} <a class="ext" href="{{ b.url }}" target="_blank" rel="noopener" title="Открыть на Федресурсе">↗</a>{% endif %}</li>
+{% endfor %}
+</ul>
+{% endif %}
+
+{% if s.fedresurs.pledges %}
+<h3 class="fed-h">Залоги имущества</h3>
+<ul class="alert-list">
+{% for p in s.fedresurs.pledges %}
+<li>{{ p.date or '—' }} — {{ p.title }}{% if p.url %} <a class="ext" href="{{ p.url }}" target="_blank" rel="noopener" title="Открыть на Федресурсе">↗</a>{% endif %}</li>
+{% endfor %}
+</ul>
+{% endif %}
+
+{% if s.fedresurs.leases %}
+<h3 class="fed-h">Договоры лизинга</h3>
+<ul class="alert-list">
+{% for l in s.fedresurs.leases %}
+<li>{{ l.date or '—' }} — {{ l.title }}{% if l.url %} <a class="ext" href="{{ l.url }}" target="_blank" rel="noopener" title="Открыть на Федресурсе">↗</a>{% endif %}</li>
+{% endfor %}
+</ul>
+{% endif %}
+
+<h3 class="fed-h">Все типы сообщений</h3>
+{% if s.fedresurs.types %}
+<table>
+<tr><th>Тип сообщения</th><th>Количество</th></tr>
+{% for t, cnt in s.fedresurs.types.items() %}
+<tr><td>{{ t }}</td><td>{{ cnt }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+<p class="muted" style="font-size:.88em">Источник: Единый федеральный реестр сведений о фактах деятельности юридических лиц (fedresurs.ru). Сведения через API Checko.</p>
+{% endif %}
+
+{% if s.reliability %}
+<h2>Оценка надёжности Checko</h2>
+<p>Масштаб бизнеса: {{ s.reliability.scale if s.reliability.scale is not none else '—' }}/100 ·
+Финансовые риски: {{ s.reliability.financial_risk or '—' }} ·
+Риск номинальности: {{ s.reliability.nominality or '—' }}</p>
+{% endif %}
+
+{% if s.positives %}
+<h2>Формальные положительные признаки</h2>
+<ul>{% for p in s.positives %}<li>{{ p }}</li>{% endfor %}</ul>
+{% endif %}
+
+{% if llm and llm.recommendation %}
+<h2>Рекомендация</h2>
+{% if s.verdict == 'отказ' or s.verdict == 'воздержаться' %}
+<div class="rec-bad">
+{% else %}
+<div class="rec">
+{% endif %}
+<p><b>{{ llm.recommendation | upper }}</b></p>
+<p>{{ llm.recommendation_details }}</p>
+</div>
+{% endif %}
+
+{% if llm and llm.for_each_department %}
+<h2>Заключения подразделений (для Листа согласования)</h2>
+<table>
+<tr><th style="width:220px">Подразделение</th><th>Заключение</th></tr>
+{% for dept, text in llm.for_each_department.items() %}
+<tr><td><b>{{ dept }}</b></td><td>{{ text }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+
+{% if s.not_covered %}
+<h2>Требует ручной проверки (вне автоматических источников)</h2>
+<p class="muted">По Приложению № 2 Положения следующие источники и сверки API не покрывает.</p>
+<ul class="missing">
+{% for n in s.not_covered %}<li>{{ n }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+{% if s.missing %}
+<h2>Технически не удалось получить</h2>
+<ul class="missing">
+{% for m in s.missing %}<li>{{ m }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+{% if llm and llm.human_summary %}
+<h2>Резюме проверки (человеческим языком)</h2>
+<div class="human-summary">
+{{ llm.human_summary }}
+</div>
+{% endif %}
+
+<p class="footer">
+<b>Почему цифры могут отличаться от Checko.ru:</b>
+суды — только за последние 3 года (по Приложению № 4 Положения);
+суммы по контрактам и искам — только по первой выборке в 100 записей на каждый тип (лимит Checko API 100 запросов/сутки);
+Федресурс — объединяет роли «публикатор» и «участник» (на сайте Checko показаны отдельно).
+Точные цифры — в первоисточниках по ссылкам <b>↗</b> рядом с каждым фактом.
+</p>
+<p class="footer">
+Отчёт носит справочно-аналитический характер и не заменяет проверку по Положению о проверке контрагентов.
+Стоп-факторы классифицированы в соответствии с Приложением № 4.
+GigaChat используется только для формулировки текста и не влияет на вердикт.
+</p>
+</body></html>

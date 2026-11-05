@@ -1,0 +1,51 @@
+# Виртуальные окружения
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Секреты
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Данные и кэш
+cache.sqlite
+cache.sqlite-journal
+reports/
+backups/
+*.zip
+
+# Логи
+*.log
+logs/
+
+# Одноразовые диагностические скрипты
+check_*.py
+
+# Bootstrap-скрипты (не нужны в репозитории)
+install.sh
+run.sh
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# ОС
+.DS_Store
+Thumbs.db
+
+# Временное
+tmp/
+temp/
